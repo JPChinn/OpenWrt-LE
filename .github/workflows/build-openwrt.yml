@@ -100,7 +100,6 @@ jobs:
         sudo timedatectl set-timezone "$TZ"
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
-
     - name: 下载${{matrix.target}}源码
       working-directory: /workdir
       run: |
@@ -117,9 +116,9 @@ jobs:
           rm -rf package/lean/k3screenctrl
         fi
         
-
     - name: 加载源,patch补丁和自定义设置
       run: |
+        svn co https://github.com/281677160/N1/trunk reform
         cp -Rf `find ./ -maxdepth 1 -type d ! -path './openwrt' ! -path './'` openwrt
         cd openwrt
         if [ -f "build/${{matrix.target}}/$DIY_P1_SH" ]; then
@@ -152,7 +151,7 @@ jobs:
         make && sudo make install
         popd
  
-    - name: SSH远程连接（运行到此必须刷新一次网页再等待代码展开,不能频繁刷新）
+    - name: SSH远程连接（若打开SSH,运行到此必须刷新一次网页耐心等待代码展开,不能频繁刷新）
       uses: garypang13/debugger-action@master
       if: env.SSH_ACTIONS == 'true' || (github.event.inputs.ssh == 'ssh' && github.event.inputs.ssh  != 'false')
 
@@ -174,7 +173,6 @@ jobs:
         echo "date=$(date "+%Y-%m-%d %H.%M")" >> $GITHUB_ENV
         echo "date1=$(date "+%Y年%m月%d号-%H点%M分")" >> $GITHUB_ENV
         echo "date2=$(date "+%Y%m%d-%H%M")" >> $GITHUB_ENV
-
     - name: 上传bin文件夹(固件+ipk)在github空间
       uses: actions/upload-artifact@v2
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
@@ -182,6 +180,25 @@ jobs:
         name: OpenWrt_bin_${{matrix.target}}_${{ env.date }}
         path: openwrt/bin
 
+    - name: 打包n1、vplus、beikeyun、l1pro、s905x3固件
+      run: |
+        if [ -n "$(ls -A "openwrt/bin/targets/armvirt" 2>/dev/null)" ]; then
+         mv -f openwrt/bin/targets/armvirt/*/*.tar.gz reform/openwrt
+         cd reform
+         sudo ./gen_openwrt -d -k latest
+         devices=("phicomm-n1" "vplus" "beikeyun" "l1pro" "s905x3")
+         cd out
+         for x in ${devices[*]}; do
+           cd $x
+           filename=$(ls | awk -F '.img' '{print $1}')
+           gzip *.img
+           cd ../
+           echo "firmware_$x=$filename" >> $GITHUB_ENV
+         done
+           cd ../ && cd ../
+           mv -f reform/out/*/*.img.gz openwrt/bin/targets/armvirt/*
+        fi
+    
     - name: 整理固件文件夹
       id: organizer
       run: |
